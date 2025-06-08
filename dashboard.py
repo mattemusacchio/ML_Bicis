@@ -9,6 +9,7 @@ from streamlit_folium import st_folium
 from datetime import datetime, timedelta
 import pickle
 import warnings
+import os
 warnings.filterwarnings('ignore')
 
 # Configuración de la página
@@ -40,66 +41,34 @@ st.markdown("""
         border-radius: 0.5rem;
         border: 2px solid #1f77b4;
     }
+    .real-data-badge {
+        background-color: #28a745;
+        color: white;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # Header principal
 st.markdown('<h1 class="main-header">🚴 BA Bicis - Predictor de Arribos</h1>', unsafe_allow_html=True)
-st.markdown("### 🤖 Dashboard Interactivo para Predicción de Bicicletas Públicas GCBA")
+st.markdown('### 🤖 Dashboard Inteligente con Datos Reales <span class="real-data-badge">DATOS REALES</span>', unsafe_allow_html=True)
 
 # Sidebar para configuración
 st.sidebar.header("⚙️ Configuración")
 
-# Función para cargar datos simulados (ya que no podemos ejecutar el script completo)
+# Función para cargar datos reales del proyecto
 @st.cache_data
 def load_sample_data():
-    """Cargar datos de ejemplo para el dashboard"""
-    np.random.seed(42)
-    
-    # Simular estaciones de BA
-    estaciones = {
-        'id_estacion': range(1, 101),
-        'nombre_estacion': [f'Estación {i}' for i in range(1, 101)],
-        'lat_estacion': np.random.normal(-34.6037, 0.05, 100),
-        'long_estacion': np.random.normal(-58.3816, 0.08, 100),
-        'barrio': np.random.choice(['Palermo', 'Recoleta', 'San Telmo', 'Puerto Madero', 'Belgrano', 'Villa Crick'], 100)
-    }
-    
-    # Simular datos históricos
-    fechas = pd.date_range('2024-01-01', '2024-08-31', freq='30min')
-    datos_historicos = []
-    
-    for fecha in fechas[-100:]:  # Solo últimas 100 ventanas para el ejemplo
-        for estacion in range(1, 21):  # Solo primeras 20 estaciones
-            hora = fecha.hour
-            dia_semana = fecha.weekday()
-            
-            # Simular patrones realistas
-            factor_hora = 1 + 0.5 * np.sin(2 * np.pi * (hora - 8) / 12)  # Pico a las 8am y 8pm
-            factor_dia = 0.8 if dia_semana >= 5 else 1.0  # Menos uso en fin de semana
-            
-            partidas = max(0, int(np.random.poisson(5 * factor_hora * factor_dia)))
-            arribos = max(0, int(np.random.poisson(4.5 * factor_hora * factor_dia)))
-            
-            datos_historicos.append({
-                'timestamp': fecha,
-                'id_estacion': estacion,
-                'partidas': partidas,
-                'arribos': arribos,
-                'hora': hora,
-                'dia_semana': dia_semana,
-                'es_fin_de_semana': 1 if dia_semana >= 5 else 0
-            })
-    
-    # Simular resultados de modelos
-    resultados_modelos = {
-        'Random Forest': {'MAE': 1.23, 'RMSE': 2.15, 'R2': 0.67},
-        'Gradient Boosting': {'MAE': 1.31, 'RMSE': 2.28, 'R2': 0.64},
-        'Ridge Regression': {'MAE': 1.45, 'RMSE': 2.41, 'R2': 0.58},
-        'Lasso Regression': {'MAE': 1.48, 'RMSE': 2.44, 'R2': 0.56}
-    }
-    
-    return pd.DataFrame(estaciones), pd.DataFrame(datos_historicos), resultados_modelos
+    """Cargar datos reales del proyecto en lugar de simulados"""
+    estaciones_df = pd.read_csv('data/streamlit/estaciones.csv')
+    datos_historicos_df = pd.read_csv('data/streamlit/datos_historicos.csv')
+    with open('models/model_metadata.pkl', 'rb') as f:
+        metadata = pickle.load(f)
+    resultados_modelos = metadata['resultados_modelos']
+    return estaciones_df, datos_historicos_df, resultados_modelos
 
 # Función para simular predicciones
 def simular_predicciones(estaciones_df, timestamp_futuro, partidas_dict):
@@ -148,8 +117,8 @@ with tab1:
     
     with col1:
         # Crear mapa de folium
-        centro_lat = estaciones_df['lat_estacion'].mean()
-        centro_lon = estaciones_df['long_estacion'].mean()
+        centro_lat = -34.61
+        centro_lon = -58.45
         
         m = folium.Map(location=[centro_lat, centro_lon], zoom_start=12)
         
@@ -518,7 +487,8 @@ with tab5:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; padding: 20px;'>
-    <p>🚴 <strong>BA Bicis - Predictor de Arribos</strong> | Desarrollado con ❤️ para el GCBA</p>
-    <p>📊 Datos actualizados hasta Agosto 2024 | 🤖 Powered by Machine Learning</p>
+    <p>🚴 <strong>BA Bicis - Predictor de Arribos</strong> | 
+    <span class="real-data-badge">DATOS REALES</span></p>
+    <p>📊 Datos: Enero-Agosto 2024 | 🤖 Modelo entrenado con datos históricos reales</p>
 </div>
 """, unsafe_allow_html=True) 

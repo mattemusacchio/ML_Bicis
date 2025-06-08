@@ -693,3 +693,68 @@ print(f"   5. Validar con datos de septiembre 2024 en adelante")
 
 print("\n🚴 ¡PROYECTO COMPLETADO EXITOSAMENTE! 🚴")
 print("="*80)
+
+# =============================================================================
+# PASO 21: GUARDAR MODELOS Y DATOS PARA EL DASHBOARD
+# =============================================================================
+
+print("\n💾 GUARDANDO MODELOS Y DATOS PARA DASHBOARD...")
+
+# Crear directorio para modelos si no existe
+import os
+if not os.path.exists('models'):
+    os.makedirs('models')
+
+if not os.path.exists('data/streamlit'):
+    os.makedirs('data/streamlit')
+
+# Guardar el mejor modelo
+import joblib
+model_filename = f'models/best_model_{best_model_name.replace(" ", "_").lower()}.joblib'
+joblib.dump(best_model, model_filename)
+print(f"✅ Modelo guardado en: {model_filename}")
+
+# Guardar el scaler
+scaler_filename = 'models/scaler.joblib'
+joblib.dump(scaler, scaler_filename)
+print(f"✅ Scaler guardado en: {scaler_filename}")
+
+# Guardar metadatos del modelo
+model_metadata = {
+    'mejor_modelo': best_model_name,
+    'usar_escalado': best_model_name in ['Ridge Regression', 'Lasso Regression'],
+    'feature_columns': feature_columns,
+    'resultados_modelos': results,
+    'centro_lat': centro_lat,
+    'centro_long': centro_long,
+    'delta_t_minutes': DELTA_T_MINUTES
+}
+
+import pickle
+with open('models/model_metadata.pkl', 'wb') as f:
+    pickle.dump(model_metadata, f)
+print(f"✅ Metadatos guardados en: models/model_metadata.pkl")
+
+# Guardar dataset procesado (una muestra para el dashboard)
+dataset_sample = dataset_clean.tail(1000)  # Últimos 1000 registros
+dataset_sample.to_csv('data/streamlit/dataset_sample.csv', index=False)
+print(f"✅ Dataset sample guardado en: data/streamlit/dataset_sample.csv")
+
+# Guardar estaciones
+todas_las_estaciones.to_csv('data/streamlit/estaciones.csv', index=False)
+print(f"✅ Estaciones guardadas en: data/streamlit/estaciones.csv")
+
+# Guardar datos históricos agregados para análisis temporal
+datos_historicos_dashboard = dataset_clean.groupby(['timestamp', 'hora', 'dia_semana', 'es_fin_de_semana']).agg({
+    'partidas': 'sum',
+    'arribos': 'sum',
+    'target': 'sum'
+}).reset_index()
+
+datos_historicos_dashboard.to_csv('data/streamlit/datos_historicos.csv', index=False)
+print(f"✅ Datos históricos guardados en: data/streamlit/datos_historicos.csv")
+
+print(f"\n🎉 ARCHIVOS LISTOS PARA EL DASHBOARD:")
+print(f"   📁 models/")
+print(f"   📁 data/streamlit/")
+print(f"\n💡 Ahora puedes ejecutar el dashboard con datos reales!")
