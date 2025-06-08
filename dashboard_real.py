@@ -12,6 +12,8 @@ import joblib
 import os
 import warnings
 warnings.filterwarnings('ignore')
+from src.models import MLPWithEmbedding
+import torch
 
 # Configuración de la página
 st.set_page_config(
@@ -72,56 +74,77 @@ def load_real_data():
     
     # Metadatos simulados (ya que el modelo está en MLflow)
     metadata = {
-        'mejor_modelo': 'Random Forest',
+        'mejor_modelo': 'MLP con Embeddings',
         'delta_t_minutes': 30,
         'resultados_modelos': {
-            'Random Forest': {'MAE': 1.23, 'RMSE': 2.15, 'R2': 0.67},
-            'Gradient Boosting': {'MAE': 1.31, 'RMSE': 2.28, 'R2': 0.64},
-            'Ridge Regression': {'MAE': 1.45, 'RMSE': 2.41, 'R2': 0.58},
-            'Lasso Regression': {'MAE': 1.48, 'RMSE': 2.44, 'R2': 0.56}
+            'MLP con Embeddings': {'MAE': 0.011, 'RMSE': 0.07, 'R2': 0.99}
         }
     }
-    
+    # abrir el modelo mlp_con_embeddings_bicis.pth
+
     # Cargar dataset sample
     dataset_sample = pd.read_csv('data/streamlit/dataset_sample.csv')
     dataset_sample['timestamp'] = pd.to_datetime(dataset_sample['timestamp'])
     return estaciones_df, datos_historicos_df, metadata, dataset_sample
 
+
 # Función para cargar modelo entrenado (simplificada)
 @st.cache_resource
 def load_trained_model():
-    """Cargar el modelo entrenado y scaler (versión simplificada)"""
-    # Por ahora retornamos None para evitar errores de MLflow
-    # El modelo está funcionando pero está en MLflow con estructura diferente
-    return None, None, None
+    import torch
+    import joblib
+
+    # Cargar metadata, preprocesador y pesos
+    metadata = joblib.load('models/model_metadata.pkl')
+    preprocessor = joblib.load('models/preprocessor.pkl')
+
+    # Crear modelo con mismos parámetros
+    model = MLPWithEmbedding(
+        input_dim=metadata["input_dim"],
+        num_stations=metadata["num_stations"],
+        emb_dim=metadata["emb_dim"]
+    )
+    model.load_state_dict(torch.load('models/mlp_embeddings.pth', map_location='cpu'))
+    model.eval()
+
+    return model, preprocessor, metadata
 
 # Función para hacer predicciones reales (simplificada)
 def hacer_prediccion_real(estaciones_df, timestamp_futuro, partidas_dict):
-    """Hacer predicciones usando patrones realistas basados en datos históricos"""
-    predicciones = {}
-    
-    hora = timestamp_futuro.hour
-    dia_semana = timestamp_futuro.weekday()
-    
-    # Factores basados en patrones reales de BA Bicis
-    factor_hora = 1 + 0.5 * np.sin(2 * np.pi * (hora - 8) / 12)  # Pico matutino y vespertino
-    factor_dia = 0.8 if dia_semana >= 5 else 1.0  # Menos uso en fin de semana
-    
-    for _, estacion in estaciones_df.iterrows():
-        id_est = estacion['id_estacion']
-        partidas_est = partidas_dict.get(id_est, 0)
-        
-        # Predicción basada en patrones observados en datos reales
-        # Aproximadamente 85-90% de las partidas se convierten en arribos
-        base_prediction = partidas_est * np.random.uniform(0.85, 0.95)
-        
-        # Aplicar factores temporales y de ubicación
-        factor_ubicacion = np.random.uniform(0.9, 1.1)
-        
-        prediccion = base_prediction * factor_hora * factor_dia * factor_ubicacion
-        predicciones[id_est] = max(0, int(round(prediccion)))
-    
+    model, preprocessor, metadata = load_trained_model()
+    station_mapping = metadata["station_mapping"]
+
+    # Filtrar dataset_sample por el timestamp seleccionado
+    df_pred = dataset_sample[dataset_sample["timestamp"] == timestamp_futuro].copy()
+
+    if df_pred.empty:
+        st.warning("⚠️ No hay datos para el timestamp seleccionado.")
+        return {}
+
+    # Mapear id_estacion a station_index (el índice que espera el embedding)
+    df_pred["station_index"] = df_pred["id_estacion"].map(station_mapping)
+
+    # Reordenar columnas si fuera necesario (id_estacion no se usa en features)
+    X_df = df_pred.drop(columns=["timestamp", "target", "nombre_estacion", "station_index"])
+    station_ids = df_pred["station_index"].values
+
+    # Aplicar preprocessor
+    X_proc = preprocessor.transform(X_df)
+    X_tensor = torch.tensor(X_proc, dtype=torch.float32)
+    station_tensor = torch.tensor(station_ids, dtype=torch.long)
+
+    model.eval()
+    with torch.no_grad():
+        preds = model(X_tensor, station_tensor).squeeze().numpy()
+
+    predicciones = {
+    row["id_estacion"]: max(0, float(pred))
+    for (_, row), pred in zip(df_pred.iterrows(), preds)
+    }
+
     return predicciones
+
+
 
 # Cargar datos y modelo
 estaciones_df, datos_historicos_df, metadata, dataset_sample = load_real_data()
@@ -170,7 +193,7 @@ with tab1:
         m = folium.Map(location=[centro_lat, centro_lon], zoom_start=12)
         
         # Agregar estaciones reales al mapa
-        for _, estacion in estaciones_df.head(50).iterrows():  # Primeras 50 para rendimiento
+        for _, estacion in estaciones_df.iterrows():  # Primeras 50 para rendimiento
             # Calcular actividad real si tenemos dataset_sample
             if dataset_sample is not None:
                 actividad_real = dataset_sample[dataset_sample['id_estacion'] == estacion['id_estacion']]['partidas'].mean()
@@ -215,94 +238,109 @@ with tab1:
                 for i, (est_id, partidas) in enumerate(top_estaciones.items()):
                     nombre = estaciones_df[estaciones_df['id_estacion'] == est_id]['nombre_estacion'].iloc[0] if len(estaciones_df[estaciones_df['id_estacion'] == est_id]) > 0 else f"Estación {est_id}"
                     st.write(f"{i+1}. {nombre[:20]}... ({partidas:.1f})")
-
 # =============================================================================
-# TAB 2: PREDICTOR REAL
+# TAB 2: PREDICTOR REAL (USANDO DATOS REALES DEL DATASET)
 # =============================================================================
 with tab2:
     st.header("🔮 Predictor Real de Arribos")
-    
+
     col1, col2 = st.columns([1, 2])
-    
+
     with col1:
         st.subheader("⚙️ Configuración")
-        
-        # Selección de fecha y hora
-        fecha_pred = st.date_input("📅 Fecha", value=datetime(2024, 8, 15))
-        hora_pred = st.time_input("🕐 Hora", value=datetime.now().time())
-        
+        fecha_pred = st.date_input("📅 Fecha", value=datetime(2024, 8, 1))
+        hora_pred = st.time_input("🕐 Hora", value=datetime(8, 1, 1, 0).time())
+
         timestamp_prediccion = datetime.combine(fecha_pred, hora_pred)
-        
-        st.subheader("📤 Partidas Últimos 30min")
-        
-        # Selección de estaciones (solo las primeras 10 para simplicidad)
-        estaciones_disponibles = estaciones_df['id_estacion'].head(10).tolist()
-        estaciones_activas = st.multiselect(
-            "Estaciones con partidas:",
-            options=estaciones_disponibles,
-            default=estaciones_disponibles[:5]
-        )
-        
-        partidas_dict = {}
-        for est_id in estaciones_activas:
-            nombre_est = estaciones_df[estaciones_df['id_estacion'] == est_id]['nombre_estacion'].iloc[0]
-            partidas = st.slider(
-                f"{nombre_est[:15]}...:", 
-                min_value=0, 
-                max_value=20, 
-                value=5,
-                key=f"partidas_real_{est_id}"
-            )
-            partidas_dict[est_id] = partidas
-        
-        # Botón de predicción
-        if st.button("🚀 Predicción Real", type="primary"):
+
+        if st.button("🚀 Predecir arribos reales", type="primary"):
             with st.spinner("Calculando predicciones..."):
-                predicciones_reales = hacer_prediccion_real(
-                    estaciones_df.head(10), 
-                    timestamp_prediccion, 
-                    partidas_dict
-                )
-                
-                st.session_state.prediccion_real = True
-                st.session_state.timestamp_real = timestamp_prediccion
-                st.session_state.partidas_real = partidas_dict.copy()
-                st.session_state.arribos_real = predicciones_reales
-    
+
+                # Usamos directamente los datos reales para ese timestamp
+                df_input = dataset_sample[dataset_sample["timestamp"] == timestamp_prediccion].copy()
+
+                if df_input.empty:
+                    st.warning("⚠️ No hay datos disponibles para ese horario.")
+                else:
+                    # Ejecutar predicción real con el modelo
+                    predicciones_reales = hacer_prediccion_real(
+                        estaciones_df, 
+                        timestamp_prediccion, 
+                        partidas_dict=None  # ya no se usa, puede ser None
+                    )
+
+                    st.session_state.prediccion_real = True
+                    st.session_state.timestamp_real = timestamp_prediccion
+                    st.session_state.arribos_real = predicciones_reales
+                    st.session_state.df_input = df_input
+
     with col2:
         st.subheader("📊 Resultados Reales")
-        
-        if hasattr(st.session_state, 'prediccion_real') and st.session_state.prediccion_real:
-            # Crear DataFrame de resultados
+
+        if st.session_state.get("prediccion_real", False):
+            df_input = st.session_state.df_input
+            predicciones = st.session_state.arribos_real
+
             resultados_df = []
-            for est_id in estaciones_df['id_estacion'].head(10):
-                nombre = estaciones_df[estaciones_df['id_estacion'] == est_id]['nombre_estacion'].iloc[0]
-                partidas = st.session_state.partidas_real.get(est_id, 0)
-                arribos = st.session_state.arribos_real.get(est_id, 0)
+            for _, row in df_input.iterrows():
+                est_id = row["id_estacion"]
+                nombre = estaciones_df.loc[estaciones_df['id_estacion'] == est_id, 'nombre_estacion'].values[0]
+                partidas = row["partidas"]
+                arribos = predicciones.get(est_id, 0)
                 balance = arribos - partidas
-                
+
                 resultados_df.append({
                     'Estación': nombre[:25] + "..." if len(nombre) > 25 else nombre,
                     'ID': est_id,
                     'Partidas': partidas,
                     'Arribos Predichos': arribos,
+                    'arribos': row['arribos'] if 'arribos' in row else 0,  # Si no hay arribos reales, usar 0
                     'Balance': balance
                 })
-            
+
             resultados_df = pd.DataFrame(resultados_df)
             st.dataframe(resultados_df, use_container_width=True)
-            
-            # Gráfico
-            fig_pred_real = px.bar(
-                resultados_df, 
-                x='ID', 
-                y=['Partidas', 'Arribos Predichos'],
-                title=f"Predicción Real para {st.session_state.timestamp_real.strftime('%Y-%m-%d %H:%M')}",
-                barmode='group',
-                color_discrete_map={'Partidas': '#ff7f0e', 'Arribos Predichos': '#1f77b4'}
-            )
-            st.plotly_chart(fig_pred_real, use_container_width=True)
-            
+
+            st.subheader("🗺️ Mapa de Predicciones por Estación")
+
+            # Crear mapa centrado
+            centro_lat = estaciones_df['lat_estacion'].mean()
+            centro_lon = estaciones_df['long_estacion'].mean()
+            m = folium.Map(location=[centro_lat, centro_lon], zoom_start=12)
+
+            # Merge con coordenadas y nombre
+            merged = resultados_df.merge(estaciones_df, left_on="ID", right_on="id_estacion")
+
+            # Escalar tamaño de los círculos
+            max_arribos = merged['Arribos Predichos'].max()
+            for _, row in merged.iterrows():
+                color = (
+                    'green' if row['Balance'] >= 0 else 'red'
+                )
+                radius = max(3, min(10, row['Arribos Predichos'] / max_arribos * 10))
+                
+                popup_text = f"""
+                <b>{row['nombre_estacion']}</b><br>
+                Partidas: {row['Partidas']}<br>
+                Arribos predichos: {row['Arribos Predichos']:.1f}<br>
+                Arribos Reales: {row['arribos']:.1f}<br>
+                Balance: {row['Balance']:+.1f}
+                """
+
+                folium.CircleMarker(
+                    location=[row['lat_estacion'], row['long_estacion']],
+                    radius=radius,
+                    color=color,
+                    fill=True,
+                    fill_color=color,
+                    fill_opacity=0.7,
+                    popup=folium.Popup(popup_text, max_width=300)
+                ).add_to(m)
+
+            # Mostrar mapa en Streamlit
+            st_folium(m, width=800, height=500)
+
+
             # Alertas reales
             st.subheader("🚨 Alertas Operativas Reales")
             alertas_generadas = 0
@@ -313,13 +351,14 @@ with tab2:
                 elif row['Balance'] < -3:
                     st.warning(f"🟡 **{row['Estación']}**: Déficit de {row['Balance']} bicis - REABASTECER")
                     alertas_generadas += 1
-            
+
             if alertas_generadas == 0:
                 st.success("✅ No se detectaron desbalances críticos")
             else:
                 st.info(f"📊 {alertas_generadas} alertas generadas")
         else:
-            st.info("👆 Configura las partidas y presiona 'Predicción Real'")
+            st.info("👆 Elegí una fecha y hora y presioná el botón para predecir los arribos.")
+
 
 # =============================================================================
 # TAB 3: ANÁLISIS TEMPORAL REAL
