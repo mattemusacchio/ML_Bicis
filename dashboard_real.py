@@ -95,8 +95,8 @@ def load_trained_model():
     import joblib
 
     # Cargar metadata, preprocesador y pesos
-    metadata = joblib.load('models/model_metadata.pkl')
-    preprocessor = joblib.load('models/preprocessor.pkl')
+    metadata = joblib.load('models/model_metadata2.pkl')
+    preprocessor = joblib.load('models/preprocessor2.pkl')
 
     # Crear modelo con mismos parámetros
     model = MLPWithEmbedding(
@@ -104,13 +104,38 @@ def load_trained_model():
         num_stations=metadata["num_stations"],
         emb_dim=metadata["emb_dim"]
     )
-    model.load_state_dict(torch.load('models/mlp_embeddings.pth', map_location='cpu'))
+    model.load_state_dict(torch.load('models/mlp_embeddings2.pth', map_location='cpu'))
     model.eval()
 
     return model, preprocessor, metadata
 
+# @st.cache_resource
+# def load_trained_model():
+#     import joblib
+#     import torch 
+
+#     # Cargar preprocessor y metadata
+#     preprocessor = joblib.load("models/preprocessor_mlp_tree.pkl")
+#     metadata = joblib.load("models/model_metadata_mlp_tree.pkl")
+#     clf_model = joblib.load("models/clf_model.pkl")
+
+#     # Reconstruir red
+#     model = MLPWithEmbedding(
+#         input_dim=metadata["input_dim"],
+#         num_stations=metadata["num_stations"],
+#         emb_dim=metadata["emb_dim"]
+#     )
+#     model.load_state_dict(torch.load("models/mlp_tree.pth", map_location="cpu"))
+#     model.eval()
+
+#     return model, clf_model, preprocessor, metadata
+
+
 # Función para hacer predicciones reales (simplificada)
 def hacer_prediccion_real(estaciones_df, timestamp_futuro, partidas_dict):
+    import matplotlib.pyplot as plt
+    import torch
+
     model, preprocessor, metadata = load_trained_model()
     station_mapping = metadata["station_mapping"]
 
@@ -124,7 +149,7 @@ def hacer_prediccion_real(estaciones_df, timestamp_futuro, partidas_dict):
     # Mapear id_estacion a station_index (el índice que espera el embedding)
     df_pred["station_index"] = df_pred["id_estacion"].map(station_mapping)
 
-    # Reordenar columnas si fuera necesario (id_estacion no se usa en features)
+    # Reordenar columnas si fuera necesario
     X_df = df_pred.drop(columns=["timestamp", "target", "nombre_estacion", "station_index"])
     station_ids = df_pred["station_index"].values
 
@@ -133,22 +158,90 @@ def hacer_prediccion_real(estaciones_df, timestamp_futuro, partidas_dict):
     X_tensor = torch.tensor(X_proc, dtype=torch.float32)
     station_tensor = torch.tensor(station_ids, dtype=torch.long)
 
+    # Predicción
     model.eval()
     with torch.no_grad():
         preds = model(X_tensor, station_tensor).squeeze().numpy()
 
+    # Armar dict
     predicciones = {
-    row["id_estacion"]: max(0, float(pred))
-    for (_, row), pred in zip(df_pred.iterrows(), preds)
+        row["id_estacion"]: max(0, float(pred))
+        for (_, row), pred in zip(df_pred.iterrows(), preds)
     }
+
+    # ================================
+    # 📈 Gráfico: Pred vs Real
+    # ================================
+    if "target" in df_pred.columns:
+        y_true = df_pred["target"].values
+        y_pred = np.clip(preds, 0, None)
+
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax.scatter(y_true, y_pred, alpha=0.4, label="Predicciones")
+        ax.plot([0, max(y_true.max(), y_pred.max())], [0, max(y_true.max(), y_pred.max())], 'r--', label="Ideal")
+        ax.set_xlabel("Arribos reales")
+        ax.set_ylabel("Arribos predichos")
+        ax.set_title(f"Predicción vs Real ({timestamp_futuro.strftime('%Y-%m-%d %H:%M')})")
+        ax.legend()
+        ax.grid(True)
+
+        st.pyplot(fig)
 
     return predicciones
 
 
+# ========================
+# 🔮 Predicción real (combinado)
+# ========================
+# def hacer_prediccion_real(estaciones_df, timestamp_futuro, partidas_dict):
+#     import torch
+#     import numpy as np
+
+#     model, clf_model, preprocessor, metadata = load_trained_model()
+#     station_mapping = metadata["station_mapping"]
+
+#     # Filtrar dataset_sample para el timestamp elegido
+#     df_pred = dataset_sample[dataset_sample["timestamp"] == timestamp_futuro].copy()
+
+#     if df_pred.empty:
+#         st.warning("⚠️ No hay datos para el timestamp seleccionado.")
+#         return {}
+
+#     # Mapear id_estacion a índices esperados por el embedding
+#     df_pred["station_index"] = df_pred["id_estacion"].map(station_mapping)
+
+#     # Asegurarse de que todos tengan mapping
+#     if df_pred["station_index"].isna().any():
+#         st.error("❌ Algunas estaciones no están mapeadas al embedding. Verificá station_mapping.")
+#         return {}
+
+#     # Preprocesamiento
+#     X_df = df_pred.drop(columns=["timestamp", "target", "nombre_estacion", "station_index"])
+#     station_ids = df_pred["station_index"].values
+
+#     X_proc = preprocessor.transform(X_df)
+#     X_tensor = torch.tensor(X_proc.toarray(), dtype=torch.float32) if hasattr(X_proc, 'toarray') else torch.tensor(X_proc, dtype=torch.float32)
+#     station_tensor = torch.tensor(station_ids, dtype=torch.long)
+
+#     # Predicción combinada
+#     model.eval()
+#     with torch.no_grad():
+#         y_pred_class = clf_model.predict(X_proc)  # Clasificador
+#         y_pred_reg = model(X_tensor, station_tensor).squeeze().numpy()  # Regressor
+#         y_pred_final = y_pred_class * y_pred_reg
+
+#     # Armar dict final
+#     predicciones = {
+#         int(row["id_estacion"]): max(0, float(pred))
+#         for (_, row), pred in zip(df_pred.iterrows(), y_pred_final)
+#     }
+
+#     return predicciones
+
 
 # Cargar datos y modelo
 estaciones_df, datos_historicos_df, metadata, dataset_sample = load_real_data()
-model, scaler, model_metadata = load_trained_model()
+model, preprocessor, model_metadata = load_trained_model()
 
 # Verificar que los datos esté cargados
 if estaciones_df is None or datos_historicos_df is None or metadata is None:
@@ -294,7 +387,7 @@ with tab2:
                     'ID': est_id,
                     'Partidas': partidas,
                     'Arribos Predichos': arribos,
-                    'arribos': row['arribos'] if 'arribos' in row else 0,  # Si no hay arribos reales, usar 0
+                    'arribos': row['target'] if 'arribos' in row else 0,  # Si no hay arribos reales, usar 0
                     'Balance': balance
                 })
 

@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 class MLPWithEmbedding(nn.Module):
-    def __init__(self, input_dim, num_stations, emb_dim=8):
+    def __init__(self, input_dim, num_stations, emb_dim=16):
         super().__init__()
         self.embedding = nn.Embedding(num_stations, emb_dim)
         self.model = nn.Sequential(
