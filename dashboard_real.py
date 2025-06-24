@@ -74,10 +74,10 @@ def load_real_data():
     
     # Metadatos simulados (ya que el modelo está en MLflow)
     metadata = {
-        'mejor_modelo': 'MLP con Embeddings',
+        'mejor_modelo': 'XGBoost',
         'delta_t_minutes': 30,
         'resultados_modelos': {
-            'MLP con Embeddings': {'MAE': 0.011, 'RMSE': 0.07, 'R2': 0.99}
+            'XGBoost': {'MAE': 0.11, 'MSE': 0.8, 'R2': 0.47}
         }
     }
     # abrir el modelo mlp_con_embeddings_bicis.pth
@@ -104,7 +104,7 @@ def load_trained_model():
         num_stations=metadata["num_stations"],
         emb_dim=metadata["emb_dim"]
     )
-    model.load_state_dict(torch.load('models/mlp_embeddings2.pth', map_location='cpu'))
+    model.load_state_dict(torch.load('data/processed/xgb_model_single_output.pth', map_location='cpu'))
     model.eval()
 
     return model, preprocessor, metadata
