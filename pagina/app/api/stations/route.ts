@@ -1,78 +1,63 @@
 import { NextResponse } from 'next/server'
-
-const MOCK_STATIONS = [
-  {
-    id: '1',
-    name: 'Plaza de Mayo',
-    lat: -34.6081,
-    lng: -58.3698,
-    availableBikes: 12,
-    totalDocks: 20,
-    status: 'active',
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: '2',
-    name: 'Puerto Madero',
-    lat: -34.6118,
-    lng: -58.3623,
-    availableBikes: 8,
-    totalDocks: 15,
-    status: 'active',
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: '3',
-    name: 'Recoleta',
-    lat: -34.5875,
-    lng: -58.3974,
-    availableBikes: 0,
-    totalDocks: 25,
-    status: 'full',
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: '4',
-    name: 'Palermo',
-    lat: -34.5755,
-    lng: -58.4338,
-    availableBikes: 18,
-    totalDocks: 30,
-    status: 'active',
-    lastUpdate: new Date().toISOString()
-  },
-  {
-    id: '5',
-    name: 'San Telmo',
-    lat: -34.6214,
-    lng: -58.3731,
-    availableBikes: 5,
-    totalDocks: 20,
-    status: 'maintenance',
-    lastUpdate: new Date().toISOString()
-  }
-]
+import path from 'path'
+import { promises as fs } from 'fs'
 
 export async function GET() {
   try {
-    // Simular variación en datos en tiempo real
-    const stationsWithVariation = MOCK_STATIONS.map(station => ({
-      ...station,
-      availableBikes: Math.max(0, station.availableBikes + Math.floor(Math.random() * 6 - 3)),
-      lastUpdate: new Date().toISOString()
-    }))
-
+    // Leer datos de estaciones desde el archivo JSON
+    const jsonDirectory = path.join(process.cwd(), 'public')
+    const fileContents = await fs.readFile(jsonDirectory + '/stations_data.json', 'utf8')
+    const data = JSON.parse(fileContents)
+    
     return NextResponse.json({
       success: true,
-      data: stationsWithVariation,
-      totalStations: stationsWithVariation.length,
-      lastUpdate: new Date().toISOString()
+      data: data.stations,
+      metadata: data.metadata
     })
   } catch (error) {
-    console.error('Error obteniendo estaciones:', error)
+    console.error('Error loading stations data:', error)
     return NextResponse.json(
-      { error: 'Error interno del servidor' },
+      { 
+        success: false, 
+        error: 'Failed to load stations data',
+        data: []
+      }, 
       { status: 500 }
     )
   }
-} 
+}
+
+// Opcional: endpoint para obtener datos en tiempo real (simulado)
+export async function POST() {
+  try {
+    // Simular actualización de datos en tiempo real
+    const jsonDirectory = path.join(process.cwd(), 'public')
+    const fileContents = await fs.readFile(jsonDirectory + '/stations_data.json', 'utf8')
+    const data = JSON.parse(fileContents)
+    
+    // Simular cambios en disponibilidad
+    const updatedStations = data.stations.map(station => ({
+      ...station,
+      available_bikes: Math.max(0, station.available_bikes + Math.floor(Math.random() * 6 - 3)),
+      last_updated: new Date().toISOString()
+    }))
+    
+    return NextResponse.json({
+      success: true,
+      data: updatedStations,
+      metadata: {
+        ...data.metadata,
+        last_updated: new Date().toISOString(),
+        note: 'Real-time simulation'
+      }
+    })
+  } catch (error) {
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: 'Failed to update stations data'
+      }, 
+      { status: 500 }
+    )
+  }
+}

@@ -21,7 +21,6 @@ class XGBoostBikePredictor:
         self.model = None
         self.feature_names = None
         self.target_column = 'N_arribos_intervalo'
-        # ✅ FEATURES SIN DATA LEAKAGE - Solo información disponible en [T-30, T]
         self.training_features = [
             # Features de estación origen
             'id_estacion_origen', 'barrio_origen', 'zona_origen_cluster',
@@ -38,7 +37,17 @@ class XGBoostBikePredictor:
             'año_intervalo', 'mes_intervalo', 'dia_intervalo', 'hora_intervalo', 'minuto_intervalo',
             
             # Features de actividad histórica
-            'N_salidas_historicas'
+            'N_salidas_historicas',
+            
+            # Features LAG históricas (información de períodos anteriores)
+            'arribos_prev_1', 'arribos_prev_2', 'arribos_prev_3',
+            'arribos_prev_4', 'arribos_prev_5', 'arribos_prev_6',
+            'salidas_prev_1', 'salidas_prev_2', 'salidas_prev_3',
+            'salidas_prev_4', 'salidas_prev_5', 'salidas_prev_6',
+            'duracion_promedio_prev_1', 'duracion_promedio_prev_2', 'duracion_promedio_prev_3',
+            'duracion_promedio_prev_4', 'duracion_promedio_prev_5', 'duracion_promedio_prev_6',
+            'actividad_total_prev_1', 'actividad_total_prev_2', 'actividad_total_prev_3',
+            'actividad_total_prev_4', 'actividad_total_prev_5', 'actividad_total_prev_6'
         ]
         
     def load_data(self, filepath):
@@ -106,8 +115,8 @@ class XGBoostBikePredictor:
     def get_xgb_params(self):
         """Obtener parámetros optimizados para XGBoost"""
         base_params = {
-            'objective': 'reg:squarederror',
-            'eval_metric': 'rmse',
+            'objective': 'count:poisson',
+            'eval_metric': 'poisson-nloglik',
             'booster': 'gbtree',
             'n_estimators': 1000,
             'max_depth': 6,
@@ -297,13 +306,13 @@ class XGBoostBikePredictor:
 def main():
     """Función principal para entrenar el modelo"""
     
-    # Configuración - USAR DATASET SIN DATA LEAKAGE
+    # Configuración
     data_path = 'data/processed/trips_features_no_leakage.csv'
     use_gpu = True
     
-    print("=== ENTRENAMIENTO DE MODELO XGBOOST SIN DATA LEAKAGE ===")
-    print("🎯 Objetivo: Predecir arribos [T, T+30] usando info [T-30, T]")
-    print("🚫 Sin features LAG ni información de arribos")
+    print("=== ENTRENAMIENTO DE MODELO XGBOOST CON FEATURES LAG HISTÓRICAS COMPLETAS ===")
+    print("🎯 Objetivo: Predecir arribos [T, T+30] usando info histórica completa")
+    print("📈 Incluye features _prev_1 a _prev_6 para arribos, salidas, duración y actividad")
     
     # Crear predictor
     predictor = XGBoostBikePredictor(use_gpu=use_gpu)
@@ -331,9 +340,9 @@ def main():
         metadata_path='models/xgboost_no_leakage_metadata.pkl'
     )
     
-    print("\n=== RESUMEN FINAL SIN DATA LEAKAGE ===")
+    print("\n=== RESUMEN FINAL ===")
     print(f"✅ Modelo entrenado exitosamente")
-    print(f"📏 Features utilizadas: {len(predictor.training_features)} (sin LAG)")
+    print(f"📏 Features utilizadas: {len(predictor.training_features)} (incluye LAG históricas)")
     print(f"🏋️ Samples de entrenamiento: {len(X_train):,}")
     print(f"🧪 Samples de prueba: {len(X_test):,}")
     print(f"🎯 Target: {predictor.target_column}")
@@ -341,11 +350,13 @@ def main():
     for metric, value in metrics.items():
         print(f"  {metric}: {value:.4f}")
     
-    print(f"\n🚫 DATA LEAKAGE ELIMINADO:")
-    print(f"   - No se usan features LAG")
-    print(f"   - No se usa información de arribos como feature")
-    print(f"   - Solo se usa información histórica [T-30, T]")
-    print(f"   - Se predice información futura [T, T+30]")
+    print(f"\n📈 FEATURES LAG HISTÓRICAS COMPLETAS:")
+    print(f"   🎯 ARRIBOS: arribos_prev_1 a arribos_prev_6")
+    print(f"   🚀 SALIDAS: salidas_prev_1 a salidas_prev_6")
+    print(f"   ⏱️ DURACIÓN: duracion_promedio_prev_1 a duracion_promedio_prev_6")
+    print(f"   📊 ACTIVIDAD: actividad_total_prev_1 a actividad_total_prev_6")
+    print(f"   ✅ Solo usa información de períodos anteriores (sin data leakage)")
+    print(f"   📏 Total de features LAG: {len([f for f in predictor.training_features if 'prev_' in f])}")
     
     return predictor, metrics, feature_importance
 

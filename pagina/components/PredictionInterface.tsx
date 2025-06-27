@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 
 interface PredictionData {
   stationId: string;
@@ -14,19 +14,72 @@ export default function PredictionInterface() {
   const [selectedTime, setSelectedTime] = useState('')
   const [predictions, setPredictions] = useState<PredictionData[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [stations, setStations] = useState<{id: string, name: string}[]>([])
+  const [stationsLoading, setStationsLoading] = useState(true)
 
-  const stations = [
-    { id: '1', name: 'Plaza de Mayo' },
-    { id: '2', name: 'Puerto Madero' },
-    { id: '3', name: 'Recoleta' },
-    { id: '4', name: 'Palermo' },
-    { id: '5', name: 'San Telmo' },
-    { id: '6', name: 'Belgrano' },
-    { id: '7', name: 'Villa Crick' },
-    { id: '8', name: 'Barracas' },
-    { id: '9', name: 'La Boca' },
-    { id: '10', name: 'Constitución' }
-  ]
+  // Cargar estaciones reales al montar el componente
+  useEffect(() => {
+    loadRealStations()
+  }, [])
+
+  const loadRealStations = async () => {
+    try {
+      setStationsLoading(true)
+      
+      // Intentar cargar desde la API primero
+      const response = await fetch('/api/stations')
+      
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success && result.data) {
+          const stationsList = result.data
+            .sort((a: any, b: any) => (b.total_trips || 0) - (a.total_trips || 0)) // Ordenar por popularidad
+            .slice(0, 50) // Solo top 50 para el dropdown
+            .map((station: any) => ({
+              id: station.id,
+              name: station.name
+            }))
+          
+          setStations(stationsList)
+          console.log(`✅ Cargadas ${stationsList.length} estaciones para predicción`)
+          return
+        }
+      }
+      
+      // Fallback: cargar desde archivo JSON estático
+      const jsonResponse = await fetch('/stations_data.json')
+      if (jsonResponse.ok) {
+        const jsonData = await jsonResponse.json()
+        const stationsList = jsonData.stations
+          .sort((a: any, b: any) => (b.total_trips || 0) - (a.total_trips || 0))
+          .slice(0, 50)
+          .map((station: any) => ({
+            id: station.id,
+            name: station.name
+          }))
+        
+        setStations(stationsList)
+        console.log(`✅ Cargadas ${stationsList.length} estaciones desde JSON`)
+        return
+      }
+      
+      throw new Error('No se pudieron cargar las estaciones')
+      
+    } catch (error) {
+      console.error('❌ Error cargando estaciones:', error)
+      
+      // Fallback a estaciones básicas
+      const fallbackStations = [
+        { id: '1', name: 'Estación Centro' },
+        { id: '2', name: 'Estación Norte' },
+        { id: '3', name: 'Estación Sur' }
+      ]
+      setStations(fallbackStations)
+      console.log('⚠️ Usando estaciones de fallback')
+    } finally {
+      setStationsLoading(false)
+    }
+  }
 
   const handlePredict = async () => {
     if (!selectedStation || !selectedTime) {

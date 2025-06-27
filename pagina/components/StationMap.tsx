@@ -28,7 +28,10 @@ interface Station {
   lng: number;
   availableBikes: number;
   totalDocks: number;
-  status: 'active' | 'maintenance' | 'full';
+  status: 'active' | 'maintenance' | 'full' | 'empty';
+  address?: string;
+  totalTrips?: number;
+  popularityScore?: number;
 }
 
 export default function StationMap() {
@@ -37,86 +40,83 @@ export default function StationMap() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Simular datos de estaciones de CABA
-    const mockStations: Station[] = [
-      {
-        id: '1',
-        name: 'Plaza de Mayo',
-        lat: -34.6081,
-        lng: -58.3698,
-        availableBikes: 12,
-        totalDocks: 20,
-        status: 'active'
-      },
-      {
-        id: '2',
-        name: 'Puerto Madero',
-        lat: -34.6118,
-        lng: -58.3623,
-        availableBikes: 8,
-        totalDocks: 15,
-        status: 'active'
-      },
-      {
-        id: '3',
-        name: 'Recoleta',
-        lat: -34.5875,
-        lng: -58.3974,
-        availableBikes: 0,
-        totalDocks: 25,
-        status: 'full'
-      },
-      {
-        id: '4',
-        name: 'Palermo',
-        lat: -34.5755,
-        lng: -58.4338,
-        availableBikes: 18,
-        totalDocks: 30,
-        status: 'active'
-      },
-      {
-        id: '5',
-        name: 'San Telmo',
-        lat: -34.6214,
-        lng: -58.3731,
-        availableBikes: 5,
-        totalDocks: 20,
-        status: 'maintenance'
-      },
-      {
-        id: '6',
-        name: 'Belgrano',
-        lat: -34.5633,
-        lng: -58.4606,
-        availableBikes: 15,
-        totalDocks: 25,
-        status: 'active'
-      },
-      {
-        id: '7',
-        name: 'Villa Crick',
-        lat: -34.6037,
-        lng: -58.4427,
-        availableBikes: 22,
-        totalDocks: 35,
-        status: 'active'
-      },
-      {
-        id: '8',
-        name: 'Barracas',
-        lat: -34.6489,
-        lng: -58.3759,
-        availableBikes: 7,
-        totalDocks: 18,
-        status: 'active'
+    // Cargar datos reales de estaciones desde la API
+    const fetchRealStations = async () => {
+      try {
+        setIsLoading(true)
+        
+        // Intentar cargar desde la API primero
+        const response = await fetch('/api/stations')
+        
+        if (response.ok) {
+          const result = await response.json()
+          if (result.success && result.data) {
+            const realStations: Station[] = result.data.map((station: any) => ({
+              id: station.id,
+              name: station.name,
+              lat: station.lat,
+              lng: station.lng,
+              availableBikes: station.available_bikes,
+              totalDocks: station.total_docks,
+              status: station.status,
+              address: station.address,
+              totalTrips: station.total_trips,
+              popularityScore: station.popularity_score
+            }))
+            
+            setStations(realStations)
+            console.log(`✅ Cargadas ${realStations.length} estaciones reales desde API`)
+            return
+          }
+        }
+        
+        // Fallback: cargar desde archivo JSON estático
+        const jsonResponse = await fetch('/stations_data.json')
+        if (jsonResponse.ok) {
+          const jsonData = await jsonResponse.json()
+          const realStations: Station[] = jsonData.stations.map((station: any) => ({
+            id: station.id,
+            name: station.name,
+            lat: station.lat,
+            lng: station.lng,
+            availableBikes: station.available_bikes,
+            totalDocks: station.total_docks,
+            status: station.status,
+            address: station.address,
+            totalTrips: station.total_trips,
+            popularityScore: station.popularity_score
+          }))
+          
+          setStations(realStations)
+          console.log(`✅ Cargadas ${realStations.length} estaciones reales desde JSON`)
+          return
+        }
+        
+        throw new Error('No se pudieron cargar los datos de estaciones')
+        
+      } catch (error) {
+        console.error('❌ Error cargando estaciones reales:', error)
+        
+        // Fallback a datos de muestra en caso de error
+        const fallbackStations: Station[] = [
+          {
+            id: '1',
+            name: 'Estación de prueba',
+            lat: -34.6081,
+            lng: -58.3698,
+            availableBikes: 10,
+            totalDocks: 20,
+            status: 'active'
+          }
+        ]
+        setStations(fallbackStations)
+        console.log('⚠️ Usando datos de fallback')
+      } finally {
+        setIsLoading(false)
       }
-    ]
+    }
 
-    setTimeout(() => {
-      setStations(mockStations)
-      setIsLoading(false)
-    }, 1000)
+    fetchRealStations()
   }, [])
 
   const filteredStations = stations.filter(station => {

@@ -352,7 +352,7 @@ def main():
     """Función principal"""
     
     # Configuración
-    data_path = 'data/processed/trips_features_engineered_fixed.csv'
+    data_path = 'data/processed/trips_no_leakage.csv'
     sample_size = 100000000  # Usar muestra más pequeña para evitar memoria
     
     # Crear predictor

@@ -34,22 +34,70 @@ export default function DataVisualization({ showAdvanced = false }: DataVisualiz
       }))
     }
 
-    const generateStationData = () => {
-      const stations = [
-        'Plaza de Mayo', 'Puerto Madero', 'Recoleta', 'Palermo', 'San Telmo',
-        'Belgrano', 'Villa Crick', 'Barracas', 'La Boca', 'Constitución'
-      ]
-      
-      return stations.map(station => ({
-        station,
-        trips: Math.round(Math.random() * 500 + 100),
-        availability: Math.round(Math.random() * 100)
-      }))
+    const generateStationData = async () => {
+      try {
+        // Intentar cargar datos reales de estaciones
+        const response = await fetch('/api/stations')
+        
+        if (response.ok) {
+          const result = await response.json()
+          if (result.success && result.data) {
+            const realStations = result.data
+              .sort((a: any, b: any) => (b.total_trips || 0) - (a.total_trips || 0))
+              .slice(0, 10) // Top 10 estaciones
+              .map((station: any) => ({
+                station: station.name,
+                trips: station.total_trips || Math.round(Math.random() * 500 + 100),
+                availability: station.available_bikes || Math.round(Math.random() * 100)
+              }))
+            
+            console.log('✅ Datos de visualización cargados desde API')
+            return realStations
+          }
+        }
+        
+        // Fallback: cargar desde archivo JSON
+        const jsonResponse = await fetch('/stations_data.json')
+        if (jsonResponse.ok) {
+          const jsonData = await jsonResponse.json()
+          const realStations = jsonData.stations
+            .sort((a: any, b: any) => (b.total_trips || 0) - (a.total_trips || 0))
+            .slice(0, 10)
+            .map((station: any) => ({
+              station: station.name,
+              trips: station.total_trips || Math.round(Math.random() * 500 + 100),
+              availability: station.available_bikes || Math.round(Math.random() * 100)
+            }))
+          
+          console.log('✅ Datos de visualización cargados desde JSON')
+          return realStations
+        }
+        
+        throw new Error('No se pudieron cargar datos de estaciones')
+        
+      } catch (error) {
+        console.error('❌ Error cargando datos para visualización:', error)
+        
+        // Fallback a datos simulados
+        const fallbackStations = [
+          'Estación Centro', 'Estación Norte', 'Estación Sur', 'Estación Este', 'Estación Oeste'
+        ]
+        
+        return fallbackStations.map(station => ({
+          station,
+          trips: Math.round(Math.random() * 500 + 100),
+          availability: Math.round(Math.random() * 100)
+        }))
+      }
     }
 
     setHourlyData(generateHourlyData())
-    setStationData(generateStationData())
-    setIsLoading(false)
+    
+    // Cargar datos de estaciones de forma asíncrona
+    generateStationData().then(data => {
+      setStationData(data)
+      setIsLoading(false)
+    })
   }, [])
 
   if (isLoading) {
