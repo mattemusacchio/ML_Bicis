@@ -54,7 +54,8 @@ def main():
         'gamma': 0.1,
         'random_state': 42,
         'n_jobs': -1,
-        'max_delta_step': 0.7
+        'max_delta_step': 0.7,
+        'tree_method': 'gpu_hist'
     }
     
     # Entrenar modelo

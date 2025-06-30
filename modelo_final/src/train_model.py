@@ -24,7 +24,7 @@ class BikeXGBoostTrainer:
             'año_destino', 'mes_destino', 'dia_destino', 'hora_destino', 
             'minuto_destino', 'segundo_destino',
             'año_intervalo', 'mes_intervalo', 'dia_intervalo', 'hora_intervalo', 
-            'minuto_intervalo', 'fecha_intervalo',
+            'minuto_intervalo', 'fecha_intervalo','id_estacion_destino', 'duracion_recorrido',
             'N_arribos_intervalo',  # Variable objetivo
             'N_salidas_intervalo'   # También futuro
         ]
@@ -32,7 +32,7 @@ class BikeXGBoostTrainer:
         # Features válidas (información disponible en tiempo T)
         valid_features = [
             # IDs y features básicas
-            'id_recorrido', 'duracion_recorrido', 'id_estacion_origen', 'id_estacion_destino',
+            'id_recorrido', 'id_estacion_origen', 
             'id_usuario', 'modelo_bicicleta', 'estacion_referencia',
             
             # Features temporales de origen (conocidas)
@@ -145,7 +145,7 @@ class BikeXGBoostTrainer:
             model_params = {
                 'objective': 'count:poisson',  # Loss de Poisson
                 'eval_metric': 'poisson-nloglik',
-                'max_depth': 12,
+                'max_depth': 22,
                 'learning_rate': 0.05,
                 'subsample': 0.8,
                 'colsample_bytree': 0.8,
