@@ -10,12 +10,18 @@ interface PredictionData {
 }
 
 export default function PredictionInterface() {
+  const getDefaultDateTime = () => {
+    // Fecha predeterminada: 9 de septiembre 2024 a las 12:00
+    const defaultDate = new Date(2024, 8, 9, 12, 0) // Mes es 0-based, por eso 8 = septiembre
+    return defaultDate.toISOString().slice(0, 16)
+  }
+
   const [selectedStation, setSelectedStation] = useState('')
-  const [selectedTime, setSelectedTime] = useState('')
   const [predictions, setPredictions] = useState<PredictionData[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [stations, setStations] = useState<{id: string, name: string}[]>([])
   const [stationsLoading, setStationsLoading] = useState(true)
+  const [selectedTime, setSelectedTime] = useState(getDefaultDateTime())
 
   // Cargar estaciones reales al montar el componente
   useEffect(() => {
@@ -143,7 +149,8 @@ export default function PredictionInterface() {
               type="datetime-local"
               value={selectedTime}
               onChange={(e) => setSelectedTime(e.target.value)}
-              min={getCurrentDateTime()}
+              min="2024-01-01T00:00"
+              max="2024-12-31T23:59"
               className="w-full p-3 border border-gray-300 rounded-md focus:ring-ba-blue focus:border-ba-blue"
             />
           </div>

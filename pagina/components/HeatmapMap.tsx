@@ -50,7 +50,7 @@ export default function HeatmapMap() {
   const [modelPerformance, setModelPerformance] = useState<ModelPerformance | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedHour, setSelectedHour] = useState<number>(8)
-  const [selectedDate, setSelectedDate] = useState<string>('2024-02-15')
+  const [selectedDate, setSelectedDate] = useState<string>('2024-09-11')
   const [viewMode, setViewMode] = useState<'real' | 'predicted' | 'comparison'>('comparison')
 
   useEffect(() => {
@@ -185,9 +185,9 @@ export default function HeatmapMap() {
       baseColor = '#dc2626' // rojo para predicciones
     } else { // comparison
       // Color basado en accuracy de la predicción
-      if (station.accuracy > 0.8) {
+      if (station.accuracy > 0.6) {
         baseColor = '#059669' // verde - buena predicción
-      } else if (station.accuracy > 0.6) {
+      } else if (station.accuracy > 0.4) {
         baseColor = '#d97706' // naranja - predicción regular
       } else {
         baseColor = '#dc2626' // rojo - mala predicción
@@ -216,14 +216,14 @@ export default function HeatmapMap() {
   }
 
   const getAccuracyColor = (accuracy: number) => {
-    if (accuracy > 0.8) return 'text-green-600'
-    if (accuracy > 0.6) return 'text-yellow-600'
+    if (accuracy > 0.6) return 'text-green-600'
+    if (accuracy > 0.4) return 'text-yellow-600'
     return 'text-red-600'
   }
 
   const getAccuracyIcon = (accuracy: number) => {
-    if (accuracy > 0.8) return '✅'
-    if (accuracy > 0.6) return '⚠️'
+    if (accuracy > 0.6) return '✅'
+    if (accuracy > 0.4) return '⚠️'
     return '❌'
   }
 
@@ -256,10 +256,10 @@ export default function HeatmapMap() {
               onChange={(e) => setSelectedDate(e.target.value)}
               className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               min="2020-01-01"
-              max="2024-02-29"
+              max="2024-12-31"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Datos disponibles: Enero 2020 - Febrero 2024
+              Datos disponibles: Enero 2020 - Diciembre 2024
             </p>
           </div>
           
@@ -386,7 +386,7 @@ export default function HeatmapMap() {
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
                             <span className="text-gray-600">Error predicción:</span>
-                            <span className="font-medium text-red-600">{station.error_prediccion}</span>
+                            <span className="font-medium text-red-600">{station.error_prediccion.toFixed(3)}</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-gray-600">Precisión:</span>
@@ -413,15 +413,15 @@ export default function HeatmapMap() {
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-xs text-gray-500">Precisión del modelo:</span>
                             <span className={`text-xs font-medium ${getAccuracyColor(station.accuracy)}`}>
-                              {station.accuracy > 0.8 ? 'Excelente' : 
-                               station.accuracy > 0.6 ? 'Buena' : 'Mejorable'}
+                              {station.accuracy > 0.6 ? 'Excelente' : 
+                               station.accuracy > 0.4 ? 'Buena' : 'Mejorable'}
                             </span>
                           </div>
                           <div className="w-full h-2 bg-gray-200 rounded-full">
                             <div 
                               className={`h-full rounded-full ${
-                                station.accuracy > 0.8 ? 'bg-green-500' :
-                                station.accuracy > 0.6 ? 'bg-yellow-500' : 'bg-red-500'
+                                station.accuracy > 0.6 ? 'bg-green-500' :
+                                station.accuracy > 0.4 ? 'bg-yellow-500' : 'bg-red-500'
                               }`}
                               style={{ width: `${station.accuracy * 100}%` }}
                             ></div>

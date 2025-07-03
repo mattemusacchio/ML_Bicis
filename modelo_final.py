@@ -36,16 +36,16 @@ def create_time_series_dataset_fast(trips_df, time_window_minutes=30):
     trips_df['fecha_destino_recorrido'] = pd.to_datetime(trips_df['fecha_destino_recorrido'])
     
     # 1. Crear columnas de ventana para despachos (origen) y arribos (destino)
-    trips_df['timestamp_origen_window'] = (trips_df['fecha_origen_recorrido'].dt.floor(f'{time_window_minutes}T') + pd.Timedelta(minutes=time_window_minutes))
-    trips_df['timestamp_destino_window'] = trips_df['fecha_destino_recorrido'].dt.floor(f'{time_window_minutes}T')
+    trips_df['timestamp_origen_window'] = (trips_df['fecha_origen_recorrido'].dt.floor(f'{time_window_minutes}min') + pd.Timedelta(minutes=time_window_minutes))
+    trips_df['timestamp_destino_window'] = trips_df['fecha_destino_recorrido'].dt.floor(f'{time_window_minutes}min')
     trips_df['timestamp_destino_prev'] = (
-    trips_df['fecha_destino_recorrido'].dt.floor(f'{time_window_minutes}T') + pd.Timedelta(minutes=time_window_minutes))
+    trips_df['fecha_destino_recorrido'].dt.floor(f'{time_window_minutes}min') + pd.Timedelta(minutes=time_window_minutes))
     arribos_prev = trips_df.groupby(['timestamp_destino_prev','id_estacion_destino']).size().reset_index(name='arribos_prev_count').rename(columns={'timestamp_destino_prev':'timestamp','id_estacion_destino':'id_estacion'})
 
     # 2. Obtener rango de timestamps
     fecha_min = trips_df['timestamp_origen_window'].min()
     fecha_max = trips_df['timestamp_destino_window'].max()
-    timestamps = pd.date_range(start=fecha_min, end=fecha_max, freq=f'{time_window_minutes}T')
+    timestamps = pd.date_range(start=fecha_min, end=fecha_max, freq=f'{time_window_minutes}min')
     
     # 3. Obtener lista única de estaciones (origen + destino)
     estaciones_origen = trips_df[['id_estacion_origen', 'nombre_estacion_origen',
@@ -68,21 +68,33 @@ def create_time_series_dataset_fast(trips_df, time_window_minutes=30):
     ts_grid = timestamps_df.assign(key=1).merge(estaciones.assign(key=1), on='key').drop(columns='key')
 
     # 5. Precalcular estadísticas históricas (ventana de despachos)
-    despachos = trips_df.groupby(['timestamp_origen_window', 'id_estacion_origen']).agg(
-        despachos_count=('id_estacion_origen', 'count'),
-        duracion_recorrido_mean=('duracion_recorrido', 'mean'),
-        duracion_recorrido_std=('duracion_recorrido', 'std'),
-        duracion_recorrido_count=('duracion_recorrido', 'count'),
-        edad_usuario_mean=('edad_usuario', 'mean'),
-        edad_usuario_std=('edad_usuario', 'std'),
-        proporcion_mujeres=('genero', lambda x: (x == 'FEMALE').sum() / len(x) if len(x) > 0 else 0),
-        modelo_mas_comun=('modelo_bicicleta', lambda x: x.mode()[0] if len(x.mode()) > 0 else 'UNKNOWN')
-    ).reset_index()
-
-    despachos = despachos.rename(columns={
+    agg_dict = {'id_estacion_origen': 'count'}  # Siempre contar despachos
+    
+    # Agregar columnas opcionales si existen
+    if 'duracion_recorrido' in trips_df.columns:
+        agg_dict['duracion_recorrido'] = ['mean', 'std', 'count']
+    if 'edad_usuario' in trips_df.columns:
+        agg_dict['edad_usuario'] = ['mean', 'std']
+    if 'genero' in trips_df.columns:
+        agg_dict['genero'] = lambda x: (x == 'FEMALE').sum() / len(x) if len(x) > 0 else 0
+    if 'modelo_bicicleta' in trips_df.columns:
+        agg_dict['modelo_bicicleta'] = lambda x: x.mode()[0] if len(x.mode()) > 0 else 'UNKNOWN'
+    
+    despachos = trips_df.groupby(['timestamp_origen_window', 'id_estacion_origen']).agg(agg_dict).reset_index()
+    
+    # Aplanar columnas si hay múltiples niveles
+    if isinstance(despachos.columns, pd.MultiIndex):
+        despachos.columns = ['_'.join(col).strip('_') for col in despachos.columns.values]
+    
+    # Renombrar columnas
+    rename_dict = {
         'timestamp_origen_window': 'timestamp',
-        'id_estacion_origen': 'id_estacion'
-    })
+        'id_estacion_origen': 'id_estacion',
+        'id_estacion_origen_count': 'despachos_count',
+        'genero': 'proporcion_mujeres',
+        'modelo_bicicleta': 'modelo_mas_comun'
+    }
+    despachos = despachos.rename(columns=rename_dict)
 
     # 6. Precalcular arribos (ventana futura)
     arribos = trips_df.groupby(['timestamp_destino_window', 'id_estacion_destino']).size().reset_index(name='arribos_count')
@@ -100,13 +112,19 @@ def create_time_series_dataset_fast(trips_df, time_window_minutes=30):
     # 8. Rellenar NaNs con valores por defecto
     ts_df['despachos_count'] = ts_df['despachos_count'].fillna(0).astype(int)
     ts_df['arribos_count'] = ts_df['arribos_count'].fillna(0).astype(int)
-    ts_df['duracion_recorrido_mean'] = ts_df['duracion_recorrido_mean'].fillna(0)
-    ts_df['duracion_recorrido_std'] = ts_df['duracion_recorrido_std'].fillna(0)
-    ts_df['duracion_recorrido_count'] = ts_df['duracion_recorrido_count'].fillna(0).astype(int)
-    ts_df['edad_usuario_mean'] = ts_df['edad_usuario_mean'].fillna(0)
-    ts_df['edad_usuario_std'] = ts_df['edad_usuario_std'].fillna(0)
-    ts_df['proporcion_mujeres'] = ts_df['proporcion_mujeres'].fillna(0)
-    ts_df['modelo_mas_comun'] = ts_df['modelo_mas_comun'].fillna('UNKNOWN')
+    
+    # Rellenar columnas opcionales si existen
+    if 'duracion_recorrido_mean' in ts_df.columns:
+        ts_df['duracion_recorrido_mean'] = ts_df['duracion_recorrido_mean'].fillna(0)
+        ts_df['duracion_recorrido_std'] = ts_df['duracion_recorrido_std'].fillna(0)
+        ts_df['duracion_recorrido_count'] = ts_df['duracion_recorrido_count'].fillna(0).astype(int)
+    if 'edad_usuario_mean' in ts_df.columns:
+        ts_df['edad_usuario_mean'] = ts_df['edad_usuario_mean'].fillna(0)
+        ts_df['edad_usuario_std'] = ts_df['edad_usuario_std'].fillna(0)
+    if 'proporcion_mujeres' in ts_df.columns:
+        ts_df['proporcion_mujeres'] = ts_df['proporcion_mujeres'].fillna(0)
+    if 'modelo_mas_comun' in ts_df.columns:
+        ts_df['modelo_mas_comun'] = ts_df['modelo_mas_comun'].fillna('UNKNOWN')
 
     # 9. Agregar variables temporales
     ts_df['hora'] = ts_df['timestamp'].dt.hour
@@ -122,11 +140,15 @@ def create_time_series_dataset_fast(trips_df, time_window_minutes=30):
     print(f"Estaciones únicas: {ts_df['id_estacion'].nunique()}")
     
     # 10. Crear columnas "prev_1" hasta "prev_6" para todas las features históricas
-    features_to_shift = [
-        'despachos_count', 'duracion_recorrido_mean', 'duracion_recorrido_std',
-        'duracion_recorrido_count', 'edad_usuario_mean', 'edad_usuario_std',
-        'proporcion_mujeres', 'arribos_count'
-    ]
+    features_to_shift = ['despachos_count', 'arribos_count']
+    
+    # Agregar features opcionales si existen
+    if 'duracion_recorrido_mean' in ts_df.columns:
+        features_to_shift.extend(['duracion_recorrido_mean', 'duracion_recorrido_std', 'duracion_recorrido_count'])
+    if 'edad_usuario_mean' in ts_df.columns:
+        features_to_shift.extend(['edad_usuario_mean', 'edad_usuario_std'])
+    if 'proporcion_mujeres' in ts_df.columns:
+        features_to_shift.append('proporcion_mujeres')
 
     ts_df = ts_df.sort_values(['id_estacion', 'timestamp'])
 
