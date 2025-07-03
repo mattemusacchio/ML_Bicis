@@ -294,7 +294,7 @@ def main():
         raise FileNotFoundError(f"No se encontró el archivo trips_verano_timeseries.csv en {csv_path}")
     
     # Cargar el modelo correcto
-    model_path = os.path.join(script_dir, '..', 'data', 'processed', 'xgb_model_single_output.pkl')
+    model_path = os.path.join(script_dir, '..', 'models', 'xgb_model_single_output.pkl')
     
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"No se encontró el modelo xgb_model_single_output.pkl en {model_path}")
@@ -332,7 +332,7 @@ def main():
     print(f"Available date range (sample): {min_date.strftime('%Y-%m-%d')} to {max_date_sample.strftime('%Y-%m-%d')}", file=sys.stderr)
     
     # Si la fecha solicitada está fuera del rango conocido, usar una fecha válida
-    if target_date.year > 2024 or (target_date.year == 2024 and target_date.month > 2):
+    if target_date.year > 2024 or (target_date.year == 2024 and target_date.month >= 9):
         # Usar una fecha válida del 2024
         target_date = pd.to_datetime('2024-02-15')
         print(f"Requested date not available, using fallback: {target_date.strftime('%Y-%m-%d')}", file=sys.stderr)
